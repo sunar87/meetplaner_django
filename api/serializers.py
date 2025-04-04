@@ -3,6 +3,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import authenticate
 
 from users.models import CustomTelegramUser
+from events.models import Event
 
 
 class CustomUserSerializer(serializers.ModelSerializer):
@@ -90,3 +91,26 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['email'] = user.email
         token['timezone'] = user.timezone
         return token
+
+
+class ParticipantSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomTelegramUser
+        fields = ['id', 'email']
+
+
+class EventSerializer(serializers.ModelSerializer):
+    event_start = serializers.DateTimeField(format="%Y-%m-%d %H:%M")
+    event_end = serializers.DateTimeField(format="%Y-%m-%d %H:%M")
+    participants = ParticipantSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Event
+        fields = [
+            'id',
+            'title',
+            'event_start',
+            'event_end',
+            'participants'
+        ]
+        read_only_fields = ['id']

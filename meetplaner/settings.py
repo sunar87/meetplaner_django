@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     'analytics.apps.AnalyticsConfig',
     'users.apps.UsersConfig',
     'integrations.apps.IntegrationsConfig',
+    'events.apps.EventsConfig',
     'api.apps.ApiConfig'
 
 ]

@@ -1,11 +1,11 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import CustomUserViewSet, EmailTokenObtainPairView
+from .views import CustomUserViewSet, EventViewSet
 
 router = DefaultRouter()
 router.register(r'users', CustomUserViewSet, basename='user')
+router.register(r'events', EventViewSet, basename='event')
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('token/', EmailTokenObtainPairView.as_view(), name='token_obtain_pair'),
 ]
