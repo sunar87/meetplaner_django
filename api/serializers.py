@@ -106,6 +106,7 @@ class EventSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Event
+        read_only_fields = ('owner',)
         fields = [
             'id',
             'title',

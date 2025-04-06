@@ -6,6 +6,9 @@ from users.models import CustomTelegramUser
 
 
 class Event(models.Model):
+    owner = models.ForeignKey(CustomTelegramUser,
+                              on_delete=models.CASCADE,
+                              related_name='event_onwer')
     title = models.CharField(
         _('title'),
         max_length=255,
