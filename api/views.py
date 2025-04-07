@@ -1,8 +1,8 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from rest_framework.decorators import action
+from rest_framework.decorators import action, permission_classes
 from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db.models import Q
@@ -43,6 +43,11 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED
         )
 
+    def get_permissions(self):
+        if self.action == 'busy_times':
+            return [IsAuthenticated(), IsAdminUser()]
+        return super().get_permissions()
+
     @action(detail=False, methods=['POST'], url_path='login')
     def login(self, request):
         serializer = EmailTokenObtainPairSerializer(data=request.data)
@@ -67,14 +72,15 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             'schedule': serializer.data
         })
 
-    @action(detail=False, methods=['GET'])
-    def busy_times(self, request):
+    @action(detail=True, methods=['GET'])
+    def busy_times(self, request, pk=None):
+        user = self.get_object()
         query_serializer = BusyTimesQuerySerializer(data=request.query_params)
         query_serializer.is_valid(raise_exception=True)
         validated_data = query_serializer.validated_data
 
         busy_periods = Event.objects.filter(
-            Q(participants=request.user) &
+            Q(participants=user) &
             Q(event_participants__is_active=True) &
             Q(event_start__date__lte=validated_data['to_date']) &
             Q(event_end__date__gte=validated_data['from_date'])
@@ -86,7 +92,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         )
 
         response_data = {
-            'user_id': request.user.id,
+            'user_id': user.id,
             'from_date': validated_data['from_date'],
             'to_date': validated_data['to_date'],
             'busy_periods': busy_periods,
