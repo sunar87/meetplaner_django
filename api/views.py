@@ -5,6 +5,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.db.models import Q
 
 from users.models import CustomTelegramUser
 from events.models import Event, EventParticipant
@@ -12,7 +13,10 @@ from .serializers import (
     CustomUserCreateSerializer,
     CustomUserSerializer,
     EmailTokenObtainPairSerializer,
-    EventSerializer
+    EventSerializer,
+    UserScheduleParticipationSerializer,
+    BusyTimesQuerySerializer,
+    BusyTimesResponseSerializer,
 )
 
 
@@ -23,6 +27,8 @@ class CustomUserViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == 'create':
             return CustomUserCreateSerializer
+        if self.action == 'my_schedule':
+            return UserScheduleParticipationSerializer
         return super().get_serializer_class()
 
     @action(detail=False, methods=['post'], url_path='register')
@@ -48,6 +54,48 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_401_UNAUTHORIZED
             )
         return Response(serializer.validated_data)
+
+    @action(detail=False, methods=['GET'])
+    def my_schedule(self, request):
+        user = request.user
+        participations = EventParticipant.objects.filter(
+            participant=user
+        ).select_related('event')
+        serializer = self.get_serializer(participations, many=True)
+        return Response({
+            'user': CustomUserSerializer(user).data,
+            'schedule': serializer.data
+        })
+
+    @action(detail=False, methods=['GET'])
+    def busy_times(self, request):
+        query_serializer = BusyTimesQuerySerializer(data=request.query_params)
+        query_serializer.is_valid(raise_exception=True)
+        validated_data = query_serializer.validated_data
+
+        busy_periods = Event.objects.filter(
+            Q(participants=request.user) &
+            Q(event_participants__is_active=True) &
+            Q(event_start__date__lte=validated_data['to_date']) &
+            Q(event_end__date__gte=validated_data['from_date'])
+        ).order_by('event_start')
+
+        total_hours = sum(
+            (event.event_end - event.event_start).total_seconds() / 3600
+            for event in busy_periods
+        )
+
+        response_data = {
+            'user_id': request.user.id,
+            'from_date': validated_data['from_date'],
+            'to_date': validated_data['to_date'],
+            'busy_periods': busy_periods,
+            'total_busy_hours': total_hours,
+            'total_events': busy_periods.count()
+        }
+
+        response_serializer = BusyTimesResponseSerializer(response_data)
+        return Response(response_serializer.data)
 
 
 class EmailTokenObtainPairView(TokenObtainPairView):

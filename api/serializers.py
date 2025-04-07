@@ -1,9 +1,12 @@
+from datetime import timedelta
+
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import authenticate
+from django.utils import timezone
 
 from users.models import CustomTelegramUser
-from events.models import Event
+from events.models import Event, EventParticipant
 
 
 class CustomUserSerializer(serializers.ModelSerializer):
@@ -106,12 +109,84 @@ class EventSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Event
-        read_only_fields = ('owner',)
         fields = [
             'id',
             'title',
             'event_start',
             'event_end',
-            'participants'
+            'participants',
+            'owner'
         ]
-        read_only_fields = ['id']
+        read_only_fields = ['id', 'owner']
+
+    def to_representation(self, instance):
+        """Переопределяем представление для скрытия участников при необходимости"""
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+
+        if request and not self._is_participant_or_owner(instance, request.user):
+            representation.pop('participants', None)
+
+        representation.pop('owner', None)
+
+        return representation
+
+    def _is_participant_or_owner(self, instance, user):
+        """Проверяет, является ли пользователь участником или владельцем мероприятия"""
+
+        if instance.owner == user:
+            return True
+
+        return instance.participants.filter(id=user.id).exists()
+
+
+class UserScheduleEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Event
+        fields = ['id', 'title', 'event_start', 'event_end']
+        read_only_fields = fields
+
+
+class UserScheduleParticipationSerializer(serializers.ModelSerializer):
+    event = UserScheduleEventSerializer()
+
+    class Meta:
+        model = EventParticipant
+        fields = ['joined_at', 'is_active', 'event']
+        read_only_fields = fields
+
+
+class EventBusyPeriodSerializer(serializers.ModelSerializer):
+    duration = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Event
+        fields = ['id', 'title', 'event_start', 'event_end', 'duration']
+
+    def get_duration(self, obj):
+        return (obj.event_end - obj.event_start).total_seconds() / 3600
+
+
+class BusyTimesQuerySerializer(serializers.Serializer):
+    from_date = serializers.DateField(required=False)
+    to_date = serializers.DateField(required=False)
+
+    def validate(self, data):
+        from_date = data.get('from_date', timezone.now().date())
+        to_date = data.get('to_date', from_date + timedelta(days=30))
+
+        if to_date < from_date:
+            raise serializers.ValidationError("End date must be after start date")
+
+        data['from_date'] = from_date
+        data['to_date'] = to_date
+        return data
+
+
+class BusyTimesResponseSerializer(serializers.Serializer):
+    user_id = serializers.IntegerField()
+    from_date = serializers.DateField()
+    to_date = serializers.DateField()
+    busy_periods = EventBusyPeriodSerializer(many=True)
+    total_busy_hours = serializers.FloatField()
+    total_events = serializers.IntegerField()
