@@ -1,6 +1,6 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from rest_framework.decorators import action, permission_classes
+from rest_framework.decorators import action
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.shortcuts import get_object_or_404
@@ -137,6 +137,20 @@ class EventViewSet(viewsets.ModelViewSet):
         if event.event_end < timezone.now():
             return Response(
                 {"error": "Мероприятие уже завершилось."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        overlapping_participations = EventParticipant.objects.filter(
+            participant=user,
+            is_active=True,
+        ).filter(
+            Q(event__event_start__lt=event.event_end) &
+            Q(event__event_end__gt=event.event_start)
+        ).exists()
+
+        if overlapping_participations:
+            return Response(
+                {"error": "Вы уже зарегистрированы на другое мероприятие в это время."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
